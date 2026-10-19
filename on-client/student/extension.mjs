@@ -13,15 +13,15 @@ export function createStudentView() {
       })[mode] || '연결 상태 확인 중';
 
       const deviceLabel = (status) => ({
-        compliant: '정상 (compliant)',
-        noncompliant: '점검 필요 (noncompliant)',
+        compliant: '보안 기준 충족 (compliant)',
+        noncompliant: '보안 기준 미충족 (noncompliant)',
         unknown: '확인 불가 (unknown)',
       })[status] || '확인 불가';
 
       const sessionLabel = (status) => ({
-        active: '사용 중 (active)',
+        active: '활성 (active)',
         expired: '만료 (expired)',
-        revoked: '취소 (revoked)',
+        revoked: '철회됨 (revoked)',
         unknown: '확인 불가 (unknown)',
       })[status] || '확인 불가';
 
