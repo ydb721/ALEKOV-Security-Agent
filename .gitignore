@@ -1,0 +1,27 @@
+﻿# Environment secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Dependencies and local files
+**/node_modules/
+**/.codex/
+**/.vscode/
+**/*.log
+**/tmp/
+**/.DS_Store
+
+# Private credentials and local host configuration
+**/*.pem
+**/*.key
+**/*.pfx
+**/*.p12
+**/*.crt
+**/*.cer
+**/access-token.txt
+**/credentials.json
+**/native.json
+**/sdp-host.json
+**/registry/
+**/vault/
+**/*.credential
