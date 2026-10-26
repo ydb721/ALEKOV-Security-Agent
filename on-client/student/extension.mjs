@@ -493,7 +493,120 @@ export function createStudentView() {
       root.append(diagnosticArea);
       return root;
     },
-    renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
+    renderVulnerabilities({ status, mode, data, error }) {
+      const root = document.createElement('section');
+      const text = (tag, value) => {
+        const node = document.createElement(tag);
+        node.textContent = value;
+        return node;
+      };
+      const secretLike = /(?:Bearer\s+\S+|sk-(?:proj-|ant-|svcacct-)?[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:api[_ -]?key|authorization|password|비밀번호|토큰)\s*[:=]\s*\S+)/i;
+      const safeText = (value, limit = 500) => typeof value === 'string' && value.trim().length > 0 && value.length <= limit
+        && !secretLike.test(value) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value);
+      const safeCode = value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(value);
+      const time = value => typeof value === 'string'
+        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+        && Number.isFinite(Date.parse(value));
+      const line = (label, value) => root.append(text('p', `${label}: ${value}`));
+      const modeText = {
+        demo: '예제 자료(demo)이며 실제 서비스 조회 결과가 아닙니다.',
+        connected: '연결됨(connected)',
+        disconnected: '연결 없음(disconnected)',
+        unknown: '연결 상태 확인 불가(unknown)',
+      };
+      const scanText = {
+        complete: '모두 조회(complete)',
+        partial: '일부 조회 실패(partial)',
+        not_checked: '아직 조회 안 함(not_checked)',
+        not_configured: '조회 준비 미완료(not_configured)',
+        unverifiable: 'lock 파일 확인 불가(unverifiable)',
+      };
+      const packageText = {
+        known_vulnerabilities: '알려진 취약 항목 있음(known_vulnerabilities)',
+        none_found: '조회 범위에서 알려진 취약 항목 없음(none_found)',
+        unverifiable: '조회 확인 불가(unverifiable)',
+      };
+
+      if (status === 'idle') {
+        root.append(text('p', '패키지 취약점 조회 전(idle)입니다. 이전 조회 결과는 표시하지 않습니다.'));
+        return root;
+      }
+      if (status === 'loading') {
+        root.append(text('p', '패키지 취약점 정보를 조회 중(loading)입니다. 이전 결과는 현재 결과가 아닙니다.'));
+        return root;
+      }
+      if (status === 'error') {
+        const code = error && safeCode(error.code) ? error.code : 'RESULT_UNVERIFIED';
+        const message = error && safeText(error.message) ? error.message : '안전하지 않거나 제공되지 않은 오류 메시지는 표시하지 않았습니다.';
+        root.append(text('h3', '패키지 조회 실패(error)'));
+        line('오류 코드', code);
+        line('오류 메시지', message);
+        root.append(text('p', '취소·시간 초과·응답 오류는 조회 성공이나 취약 항목 없음이 아닙니다. 이전 결과도 현재 확인 결과가 아닙니다.'));
+        root.append(text('p', '제공 UI에서 직접 다시 조회하세요.'));
+        return root;
+      }
+      if (status !== 'ok' || !data || typeof data !== 'object' || !Object.hasOwn(scanText, data.status)) {
+        root.append(text('p', '패키지 조회 결과를 확인할 수 없습니다(unverifiable). 취약 항목 없음으로 판단하지 마세요.'));
+        return root;
+      }
+
+      root.append(text('h3', '설치 패키지 취약점 조회 결과'));
+      line('전체 조회 상태', scanText[data.status]);
+      if (mode != null) root.append(text('p', modeText[mode] || '연결 상태 확인 불가(unknown)'));
+      if (safeText(data.lockfileVersion, 100)) line('lockfile 버전', data.lockfileVersion);
+      if (safeText(data.lockfileHash, 128)) line('lockfile 해시', data.lockfileHash);
+      if (time(data.checkedAt)) line('전체 확인 시각', data.checkedAt);
+
+      if (data.status === 'not_checked') root.append(text('p', '승인된 패키지가 없어 아직 조회하지 않았습니다. 취약 항목 없음이나 안전을 뜻하지 않습니다.'));
+      if (data.status === 'not_configured') root.append(text('p', '프로젝트 조회 준비가 완료되지 않았습니다. 취약 항목 없음이나 안전을 뜻하지 않습니다.'));
+      if (data.status === 'unverifiable') root.append(text('p', 'lock 파일 또는 전체 조회를 확인할 수 없습니다. 일부 전달된 결과만 표시하며 전체 결과로 판단하지 마세요.'));
+      if (data.status === 'partial') root.append(text('p', '일부 패키지 조회가 실패했습니다. 아래 확인된 결과는 유지하지만 전체 조회 성공은 아닙니다.'));
+
+      if (!Array.isArray(data.packages)) {
+        root.append(text('p', '패키지 목록을 확인할 수 없습니다. 취약 항목 없음으로 표시하지 않습니다.'));
+        return root;
+      }
+      if (data.packages.length === 0) {
+        root.append(text('p', data.status === 'complete'
+          ? '조회할 허용 공개 패키지가 없습니다.'
+          : '표시할 패키지 결과가 없습니다.'));
+        return root;
+      }
+
+      for (const pkg of data.packages) {
+        const row = document.createElement('article');
+        const validPackage = pkg && typeof pkg === 'object' && safeText(pkg.name, 200) && safeText(pkg.version, 100)
+          && Object.hasOwn(packageText, pkg.status) && safeText(pkg.source, 200) && time(pkg.checkedAt)
+          && Array.isArray(pkg.vulnerabilities);
+        if (!validPackage) {
+          row.append(text('p', '패키지 결과를 확인할 수 없습니다(unverifiable).'));
+          root.append(row);
+          continue;
+        }
+        row.setAttribute('data-student-package-name', pkg.name);
+        row.setAttribute('data-student-package-version', pkg.version);
+        row.append(text('h4', `${pkg.name} ${pkg.version}`));
+        row.append(text('p', `정확한 설치 버전: ${pkg.version}`));
+        row.append(text('p', `패키지 상태: ${packageText[pkg.status]}`));
+        row.append(text('p', `출처: ${pkg.source}`));
+        row.append(text('p', `패키지 확인 시각: ${pkg.checkedAt}`));
+        if (pkg.status === 'unverifiable') {
+          row.append(text('p', pkg.vulnerabilities.length > 0
+            ? '일부 확인 · 전체 조회 확인 불가입니다. 아래 전달된 항목만 표시합니다.'
+            : '조회 확인 불가입니다. 알려진 취약 항목 없음이나 안전을 뜻하지 않습니다.'));
+        }
+        if (pkg.status === 'none_found') row.append(text('p', '조회 범위에서 알려진 취약 항목이 발견되지 않았습니다. 전체 보안 상태를 보장하지 않습니다.'));
+        for (const finding of pkg.vulnerabilities) {
+          if (!finding || !safeText(finding.id, 200) || !time(finding.modified)) {
+            row.append(text('p', '전달된 취약 항목 일부를 확인할 수 없습니다.'));
+            continue;
+          }
+          row.append(text('p', `취약 항목 ID: ${finding.id}`), text('p', `수정 시각: ${finding.modified}`));
+        }
+        root.append(row);
+      }
+      return root;
+    },
     renderAiConnection({ status, mode, data, error, checkedAt, explanationAccepted }) {
       const root = document.createElement('div');
       const text = (tag, value) => {
