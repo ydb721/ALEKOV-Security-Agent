@@ -48,3 +48,5 @@ npm.cmd run demo
 ```
 
 실행, 구성, 오류 해결과 지원 범위의 상세 설명은 [학생용 실행 설명서](docs/STUDENT_RUNBOOK.md)를 참고하세요.
+
+최종 재현 기록과 인수인계 계획은 [STUDENT_RELEASE_RECORD.md](docs/STUDENT_RELEASE_RECORD.md)를 참고하세요.
