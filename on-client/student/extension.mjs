@@ -556,6 +556,20 @@ export function createStudentView() {
       } else if (status === 'error') {
         const info = safeError(error);
         root.append(text('p', 'AI 연결 점검 실패'), text('p', `오류 유형: ${info.category}`), text('p', `오류 코드: ${info.code}`), text('p', `오류 메시지: ${info.message}`));
+        const accountAndAuthorizationCodes = [
+          'ON_AI_PROVISIONING_PENDING', 'SUBJECT_SCOPE_UNVERIFIED', 'AI_REQUEST_UNVERIFIED',
+        ];
+        if (info.code === 'ON_AI_PROVISIONING_PENDING') {
+          root.append(text('p', '학생 앱 이용 권한을 준비 중입니다. 담당자에게 현재 계정 연결 상태와 앱 이용 권한을 확인해 달라고 요청하세요.'));
+        } else if (info.code === 'WB_CLCO_AUTH_REQUIRED') {
+          root.append(text('p', 'AI 인증에 필요한 계정 연결을 다시 확인하고 담당자에게 문의하세요. API 키나 Workbench 열쇠를 직접 입력하지 마세요.'));
+        } else if (info.code === 'WB_CLCO_ACCESS_BLOCKED') {
+          root.append(text('p', '앱 접근이 제한됐습니다. 현재 계정 연결과 앱 이용 권한을 확인하고 담당자에게 문의하세요.'));
+        } else if (info.code === 'ON_AI_AUTHORIZATION_CHANGED') {
+          root.append(text('p', '앱 권한이 변경됐습니다. 현재 계정 연결을 다시 확인하고 담당자에게 앱 권한을 확인해 달라고 요청하세요.'));
+        } else if (accountAndAuthorizationCodes.includes(info.code)) {
+          root.append(text('p', '현재 연결 또는 권한을 확인할 수 없습니다. 담당자에게 현재 계정 연결과 앱 이용 권한을 확인해 달라고 요청하세요.'));
+        }
         if (info.category === '요청 취소') root.append(text('p', '취소된 요청은 성공한 점검이 아닙니다. 이전 결과는 현재 결과가 아닙니다.'));
         if (info.category === '요청 시간 초과') root.append(text('p', '시간 초과로 점검 결과를 확인하지 못했습니다.'));
         root.append(text('p', '다시 점검하려면 제공 화면에서 사용자가 직접 점검 버튼을 누르세요.'));
