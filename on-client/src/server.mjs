@@ -16,6 +16,7 @@ import {prepareLearnerSupportRequest} from './ai/learner-support-contract.mjs';
 import {createVaultOnAiService} from './ai/vault-service.mjs';
 import {createConnectionManager} from './connection/manager.mjs';
 import {createProjectScanner} from './vulnerabilities/project-scan.mjs';
+import {collectPcStatus} from './pc/metrics.mjs';
 import {buildLocalLearnerSupportGuide,isLearnerSupportProblemKind,readLocalLearnerSupportObservation} from './learner-support/service.mjs';
 import {nativeOwn,nativePublicError} from './connection/native-login.mjs';
 import {createNativeHostContext,captureNativeHostConfiguration,readNativeHostConfiguration,openNativeHostOperation,readNativeHostOperation,assertNativeHostOperation,createNativeOperationVault,closeNativeHostOperation} from './connection/native-context.mjs';
@@ -394,6 +395,10 @@ export function createOnServer(serverOptions={}) {
         send(output.status,output.body);return;
       }
       const gets=new Map([['/api/me',['readIdentity','identity']],['/api/apps',['readApps','apps']],['/api/events',['readEvents','events']],['/api/devices',['readDevices','devices']],['/api/sessions',['readSessions','sessions']]]);
+      if(req.method==='GET'&&url.pathname==='/api/pc/status'){
+        const data=await bounded(signal=>collectPcStatus({mode:mode==='demo'?'demo':'local',signal}));
+        send(200,{ok:true,data});return;
+      }
       if(req.method==='GET'&&gets.has(url.pathname)){
         const [name,kind]=gets.get(url.pathname);
         let raw;

@@ -180,6 +180,13 @@ main:focus { outline: none; }
 .vulnerabilities-result th, .vulnerabilities-result td { padding: 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .vulnerabilities-result th { background: var(--bg); }
 
+.pc-status-result { margin-top: 12px; }
+.pc-metrics { display: grid; gap: 10px; margin: 0; }
+.pc-metric { border-left: 3px solid var(--accent); padding: 8px 10px; background: var(--bg); }
+.pc-metric[data-state="error"] { border-left-color: var(--deny); }
+.pc-metric h3, .pc-metric p { margin: 0 0 5px; }
+.pc-metric p:last-child { margin-bottom: 0; }
+
 .diag-output {
   margin: 12px 0 0; padding: 12px; max-height: 320px; overflow: auto;
   background: #10151d; color: #e6edf3; border-radius: var(--radius);

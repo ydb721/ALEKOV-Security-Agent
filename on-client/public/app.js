@@ -57,6 +57,7 @@ const state = {
   sessions: { status: 'loading' },
   access: { status: 'idle' },
   diagnostics: { status: 'idle' },
+  pcStatus: { status: 'idle' },
   vulnerabilities: { status: 'idle' },
   aiConnection: { status: 'idle' },
   selectedExplanation: { event: null, resource: { status: 'idle' } },
@@ -70,6 +71,9 @@ let accessController = null;
 let vulnerabilitiesController = null;
 let vulnerabilitiesGeneration = 0;
 let vulnerabilitiesView = null;
+let pcStatusController = null;
+let pcStatusGeneration = 0;
+let previousPcMetrics = { cpu: null, memory: null, disk: null };
 const explainControllers = new Map();
 
 const explainSlots = new Map();
@@ -708,6 +712,121 @@ function renderSessions() {
   }));
 }
 
+const PC_SCHEMA = 'alekov.pc.status.v1';
+const PC_KEYS = ['schema', 'mode', 'measuredAt', 'metrics'];
+const PC_METRIC_KEYS = ['cpu', 'memory', 'disk'];
+const safePcTime = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const safePcSource = value => typeof value === 'string' && value.length > 0 && value.length <= 300;
+const safePcError = value => isRecord(value) && typeof value.code === 'string' && value.code.length > 0 && value.code.length <= 80
+  && typeof value.message === 'string' && value.message.length > 0 && value.message.length <= 300;
+const finiteBytes = value => Number.isSafeInteger(value) && value >= 0;
+const pcNumber = value => typeof value === 'number' && Number.isFinite(value);
+
+function validPcMetric(kind, value) {
+  if (!isRecord(value) || !['ok', 'error'].includes(value.status)) return false;
+  if (value.status === 'error') return Object.keys(value).length === 2 && safePcError(value.error);
+  if (!safePcSource(value.source) || !safePcTime(value.measuredAt)) return false;
+  if (kind === 'cpu') return Object.keys(value).length === 4 && pcNumber(value.percent) && value.percent >= 0 && value.percent <= 100;
+  if (kind === 'memory') return Object.keys(value).length === 7 && finiteBytes(value.usedBytes) && finiteBytes(value.totalBytes)
+    && value.totalBytes > 0 && value.usedBytes <= value.totalBytes && pcNumber(value.usedPercent) && value.usedPercent >= 0 && value.usedPercent <= 100
+    && typeof value.basis === 'string' && value.basis.length > 0 && value.basis.length <= 300;
+  return Object.keys(value).length === 5 && /^[A-Z]:$/.test(value.drive) && finiteBytes(value.freeBytes);
+}
+
+function validPcStatus(value) {
+  return exactFields(value, PC_KEYS) && value.schema === PC_SCHEMA && ['local', 'demo'].includes(value.mode) && safePcTime(value.measuredAt)
+    && isRecord(value.metrics) && Object.keys(value.metrics).length === PC_METRIC_KEYS.length && PC_METRIC_KEYS.every(key => validPcMetric(key, value.metrics[key]));
+}
+
+const gib = value => (value / (1024 ** 3)).toFixed(1);
+const signed = (value, suffix = '') => `${value >= 0 ? '+' : ''}${value.toFixed(1)}${suffix}`;
+
+function pcDelta(kind, current, previous) {
+  if (!previous || current.status !== 'ok' || previous.status !== 'ok' || current.source !== previous.source) return null;
+  if (kind === 'memory' && current.basis !== previous.basis) return null;
+  if (kind === 'disk' && current.drive !== previous.drive) return null;
+  if (kind === 'cpu') return `이전 조회 대비 ${signed(current.percent - previous.percent, '%p')}`;
+  if (kind === 'memory') return `이전 조회 대비 ${signed((current.usedBytes - previous.usedBytes) / (1024 ** 3), ' GiB')} · ${signed(current.usedPercent - previous.usedPercent, '%p')}`;
+  return `이전 조회 대비 여유 공간 ${signed((current.freeBytes - previous.freeBytes) / (1024 ** 3), ' GiB')}`;
+}
+
+function renderPcMetric(kind, metric, delta) {
+  const title = { cpu: 'CPU', memory: '메모리', disk: '시스템 드라이브' }[kind];
+  if (metric.status === 'error') return el('section', { className: 'pc-metric', 'data-state': 'error' }, [
+    el('h3', { text: title }),
+    el('p', { text: `확인 불가 · ${metric.error.code}: ${metric.error.message}` }),
+  ]);
+  const reading = kind === 'cpu' ? `사용률 ${metric.percent.toFixed(1)}%`
+    : kind === 'memory' ? `사용량 ${gib(metric.usedBytes)} GiB / 전체 ${gib(metric.totalBytes)} GiB (${metric.usedPercent.toFixed(1)}%)`
+      : `${metric.drive} 여유 공간 ${gib(metric.freeBytes)} GiB`;
+  return el('section', { className: 'pc-metric', 'data-state': 'ok' }, [
+    el('h3', { text: title }),
+    el('p', { text: reading }),
+    el('p', { className: 'muted', text: delta || '변화량: 조회 전 또는 비교 기준 변경' }),
+    kind === 'memory' ? el('p', { className: 'muted', text: `측정 기준: ${metric.basis}` }) : null,
+    el('p', { className: 'muted', text: `출처: ${metric.source} · 측정 시각: ${formatTime(metric.measuredAt)}` }),
+  ]);
+}
+
+function renderPcStatus() {
+  const target = $('pc-status-result');
+  const button = $('pc-status-load');
+  const resource = state.pcStatus;
+  button.disabled = resource.status === 'loading';
+  if (resource.status === 'idle') return setChildren(target, stateBox('empty', '조회 전입니다. 현재 PC 상태는 아직 측정하지 않았습니다.'));
+  if (resource.status === 'loading') return setChildren(target, stateBox('loading', '내 PC 상태를 측정 중입니다.'));
+  if (resource.status === 'error') return setChildren(target, stateBox('error', `확인 불가 · ${resource.error.code}: ${resource.error.message}`));
+  const { data, deltas } = resource;
+  setChildren(target,
+    data.mode === 'demo' ? stateBox('empty', '예제 데이터(demo)입니다. 아래 값은 실제 로컬 PC 측정값이 아닙니다.')
+      : stateBox(resource.status === 'partial' ? 'error' : 'empty', resource.status === 'partial' ? '일부 항목을 측정하지 못했습니다. 정상 항목은 아래에 표시합니다.' : `조회 성공 · 실제 로컬 PC 측정값 · 조회 시각: ${formatTime(data.measuredAt)}`),
+    el('div', { className: 'pc-metrics' }, PC_METRIC_KEYS.map(kind => renderPcMetric(kind, data.metrics[kind], deltas[kind]))),
+  );
+}
+
+function clearPcStatus() {
+  if (pcStatusController) pcStatusController.abort();
+  pcStatusController = null;
+  ++pcStatusGeneration;
+  previousPcMetrics = { cpu: null, memory: null, disk: null };
+  state.pcStatus = { status: 'idle' };
+  renderPcStatus();
+}
+
+async function loadPcStatus() {
+  const requestGeneration = ++pcStatusGeneration;
+  if (pcStatusController) pcStatusController.abort();
+  const controller = new AbortController();
+  pcStatusController = controller;
+  state.pcStatus = { status: 'loading' };
+  renderPcStatus();
+  try {
+    const result = await request('/api/pc/status', { signal: controller.signal, timeoutMs: 8000 });
+    if (requestGeneration !== pcStatusGeneration) return;
+    if (!result.ok) {
+      state.pcStatus = { status: 'error', error: result.error };
+      return;
+    }
+    if (!validPcStatus(result.data)) {
+      state.pcStatus = { status: 'error', error: { code: 'PC_RESULT_UNVERIFIED', message: 'PC 상태 응답 형식을 확인할 수 없습니다.' } };
+      return;
+    }
+    const data = result.data;
+    const deltas = Object.fromEntries(PC_METRIC_KEYS.map(kind => [kind, data.mode === 'local' ? pcDelta(kind, data.metrics[kind], previousPcMetrics[kind]) : null]));
+    state.pcStatus = { status: PC_METRIC_KEYS.some(kind => data.metrics[kind].status === 'error') ? 'partial' : 'ok', data, deltas };
+    if (data.mode === 'local') {
+      for (const kind of PC_METRIC_KEYS) if (data.metrics[kind].status === 'ok') previousPcMetrics[kind] = structuredClone(data.metrics[kind]);
+    } else previousPcMetrics = { cpu: null, memory: null, disk: null };
+  } catch {
+    if (requestGeneration === pcStatusGeneration) state.pcStatus = { status: 'error', error: { code: 'PC_REQUEST_FAILED', message: 'PC 상태를 요청하지 못했습니다.' } };
+  } finally {
+    if (requestGeneration === pcStatusGeneration) {
+      pcStatusController = null;
+      renderPcStatus();
+    }
+  }
+}
+
 let diagnosticsText = '';
 
 async function loadDiagnostics() {
@@ -1308,6 +1427,7 @@ async function loadAll() {
   refreshController = controller;
   cancelInteractive();
   clearVulnerabilities();
+  clearPcStatus();
 
   const refresh = $('refresh');
   refresh.disabled = true;
@@ -1336,6 +1456,7 @@ function init() {
   $('refresh').addEventListener('click', () => loadAll());
   $('diag-load').addEventListener('click', () => loadDiagnostics());
   $('diag-copy').addEventListener('click', () => copyDiagnostics());
+  $('pc-status-load').addEventListener('click', () => loadPcStatus());
   $('vulnerabilities-load').addEventListener('click', () => loadVulnerabilities());
   $('vulnerabilities-cancel').addEventListener('click', () => cancelVulnerabilities());
   $('ai-check').addEventListener('click', () => checkAiConnection());
@@ -1363,6 +1484,7 @@ function init() {
   loadConnectModule();
   renderAiConnection();
   renderVulnerabilities();
+  renderPcStatus();
   renderAllStudent();
   loadStudentModule();
   loadAll();
