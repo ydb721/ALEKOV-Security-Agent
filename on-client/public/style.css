@@ -186,6 +186,8 @@ main:focus { outline: none; }
 .pc-metric[data-state="error"] { border-left-color: var(--deny); }
 .pc-metric h3, .pc-metric p { margin: 0 0 5px; }
 .pc-metric p:last-child { margin-bottom: 0; }
+.windows-security-block { border-left: 3px solid var(--accent); padding: 8px 10px; background: var(--bg); margin-top: 10px; }
+.windows-security-block[data-state="error"] { border-left-color: var(--deny); }
 
 .diag-output {
   margin: 12px 0 0; padding: 12px; max-height: 320px; overflow: auto;

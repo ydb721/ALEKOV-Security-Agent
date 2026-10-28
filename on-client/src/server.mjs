@@ -17,6 +17,7 @@ import {createVaultOnAiService} from './ai/vault-service.mjs';
 import {createConnectionManager} from './connection/manager.mjs';
 import {createProjectScanner} from './vulnerabilities/project-scan.mjs';
 import {collectPcStatus} from './pc/metrics.mjs';
+import {collectWindowsSecurity} from './pc/security-readonly.mjs';
 import {buildLocalLearnerSupportGuide,isLearnerSupportProblemKind,readLocalLearnerSupportObservation} from './learner-support/service.mjs';
 import {nativeOwn,nativePublicError} from './connection/native-login.mjs';
 import {createNativeHostContext,captureNativeHostConfiguration,readNativeHostConfiguration,openNativeHostOperation,readNativeHostOperation,assertNativeHostOperation,createNativeOperationVault,closeNativeHostOperation} from './connection/native-context.mjs';
@@ -398,6 +399,11 @@ export function createOnServer(serverOptions={}) {
       if(req.method==='GET'&&url.pathname==='/api/pc/status'){
         const data=await bounded(signal=>collectPcStatus({mode:mode==='demo'?'demo':'local',signal}));
         send(200,{ok:true,data});return;
+      }
+      if(req.method==='GET'&&url.pathname==='/api/pc/security-status'){
+        const data=await bounded(signal=>collectWindowsSecurity({mode:mode==='demo'?'demo':'local',signal}));
+        const sdp=mode==='demo'?{status:'demo'}:mode==='disconnected'?{status:'disconnected'}:{status:'unknown',code:'ADAPTER_CONFIGURED'};
+        send(200,{ok:true,data:{...data,sdp}});return;
       }
       if(req.method==='GET'&&gets.has(url.pathname)){
         const [name,kind]=gets.get(url.pathname);

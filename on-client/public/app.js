@@ -58,6 +58,7 @@ const state = {
   access: { status: 'idle' },
   diagnostics: { status: 'idle' },
   pcStatus: { status: 'idle' },
+  windowsSecurity: { status: 'idle' },
   vulnerabilities: { status: 'idle' },
   aiConnection: { status: 'idle' },
   selectedExplanation: { event: null, resource: { status: 'idle' } },
@@ -74,6 +75,8 @@ let vulnerabilitiesView = null;
 let pcStatusController = null;
 let pcStatusGeneration = 0;
 let previousPcMetrics = { cpu: null, memory: null, disk: null };
+let windowsSecurityController = null;
+let windowsSecurityGeneration = 0;
 const explainControllers = new Map();
 
 const explainSlots = new Map();
@@ -793,6 +796,29 @@ function clearPcStatus() {
   renderPcStatus();
 }
 
+function securityLine(title, resource, describe) {
+  if (resource.status === 'error') return el('section', { className: 'windows-security-block', 'data-state': 'error' }, [el('h3', { text: title }), el('p', { text: `확인 불가 · ${resource.error.code}: ${resource.error.message}` })]);
+  return el('section', { className: 'windows-security-block' }, [el('h3', { text: title }), ...describe(resource)]);
+}
+function renderWindowsSecurity() {
+  const target=$('windows-security-result'), button=$('windows-security-load'), resource=state.windowsSecurity;
+  button.disabled=resource.status==='loading';
+  if(resource.status==='idle')return setChildren(target,stateBox('empty','조회 전입니다. Windows 설정과 이벤트 로그는 아직 읽지 않았습니다.'));
+  if(resource.status==='loading')return setChildren(target,stateBox('loading','Windows 네트워크·방화벽·이벤트 로그를 읽는 중입니다.'));
+  if(resource.status==='error')return setChildren(target,stateBox('error',`확인 불가 · ${resource.error.code}: ${resource.error.message}`));
+  const d=resource.data, demo=d.mode==='demo';
+  const source=row=>[el('p',{className:'muted',text:`출처: ${row.source} · 범위: ${row.scope} · 조회 시각: ${formatTime(row.measuredAt)}`})];
+  const blocks=[
+    securityLine('네트워크',d.network,row=>row.status==='error'?[]:[el('p',{text:`연결된 어댑터 ${row.data.adapters.length}개 · TCP 상태 집계 ${row.data.tcpStates.map(x=>`${x.state} ${x.count}`).join(', ')||'없음'}`}),...row.data.adapters.map(x=>el('p',{className:'muted',text:`${x.name}: ${x.status} · IP ${x.ipConfigured?'설정됨':'확인 불가'} · DNS ${x.dnsConfigured?'설정됨':'확인 불가'} · 게이트웨이 ${x.gatewayConfigured?'설정됨':'확인 불가'}`})),...source(row)]),
+    securityLine('Windows 방화벽',d.firewall,row=>row.status==='error'?[]:[...row.data.map(x=>el('p',{text:`${x.profile}: ${x.enabled?'활성':'비활성'} · 기본 인바운드 ${x.defaultInbound} · 아웃바운드 ${x.defaultOutbound}`})),...source(row)]),
+    ...['system','application'].map(key=>securityLine(`Windows ${key==='system'?'System':'Application'} 로그`,d.events[key],row=>row.status==='error'?[]:[el('p',{text:`Error(Level 2) ${row.data.errors}건 · Warning(Level 3) ${row.data.warnings}건`}),...source(row)])),
+    el('section',{className:'windows-security-block'},[el('h3',{text:'SDP 서버 상태'}),el('p',{text:d.sdp.status==='demo'?'예제 데이터 · 실제 SDP 연결 확인 아님':d.sdp.status==='disconnected'?'SDP 미연결 · 설정되지 않음':'확인 불가 · 어댑터 설정만으로 실제 원격 SDP 응답을 증명할 수 없습니다.'})]),
+  ];
+  setChildren(target,demo?stateBox('empty','예제 데이터(demo)입니다. 실제 Windows 또는 SDP 조회 결과가 아닙니다.'):el('p',{className:'muted',text:'실제 Windows 읽기 전용 조회 결과입니다. 네트워크 구성은 인터넷 접근 성공을 뜻하지 않습니다.'}),...blocks);
+}
+function validWindowsSecurity(d){return isRecord(d)&&d.schema==='alekov.pc.security.v1'&&['local','demo'].includes(d.mode)&&isRecord(d.network)&&isRecord(d.firewall)&&isRecord(d.events)&&isRecord(d.events.system)&&isRecord(d.events.application)&&isRecord(d.sdp);}
+async function loadWindowsSecurity(){const gen=++windowsSecurityGeneration;if(windowsSecurityController)windowsSecurityController.abort();const controller=new AbortController();windowsSecurityController=controller;state.windowsSecurity={status:'loading'};renderWindowsSecurity();try{const result=await request('/api/pc/security-status',{signal:controller.signal,timeoutMs:10000});if(gen!==windowsSecurityGeneration)return;state.windowsSecurity=result.ok&&validWindowsSecurity(result.data)?{status:'ok',data:result.data}:{status:'error',error:result.ok?{code:'WINDOWS_SECURITY_UNVERIFIED',message:'Windows 보안 상태 응답을 확인할 수 없습니다.'}:result.error};}catch{if(gen===windowsSecurityGeneration)state.windowsSecurity={status:'error',error:{code:'WINDOWS_SECURITY_REQUEST_FAILED',message:'Windows 보안 상태를 요청하지 못했습니다.'}};}finally{if(gen===windowsSecurityGeneration){windowsSecurityController=null;renderWindowsSecurity();}}}
+
 async function loadPcStatus() {
   const requestGeneration = ++pcStatusGeneration;
   if (pcStatusController) pcStatusController.abort();
@@ -1457,6 +1483,7 @@ function init() {
   $('diag-load').addEventListener('click', () => loadDiagnostics());
   $('diag-copy').addEventListener('click', () => copyDiagnostics());
   $('pc-status-load').addEventListener('click', () => loadPcStatus());
+  $('windows-security-load').addEventListener('click', () => loadWindowsSecurity());
   $('vulnerabilities-load').addEventListener('click', () => loadVulnerabilities());
   $('vulnerabilities-cancel').addEventListener('click', () => cancelVulnerabilities());
   $('ai-check').addEventListener('click', () => checkAiConnection());
@@ -1485,6 +1512,7 @@ function init() {
   renderAiConnection();
   renderVulnerabilities();
   renderPcStatus();
+  renderWindowsSecurity();
   renderAllStudent();
   loadStudentModule();
   loadAll();
