@@ -49,4 +49,6 @@ npm.cmd run demo
 
 실행, 구성, 오류 해결과 지원 범위의 상세 설명은 [학생용 실행 설명서](docs/STUDENT_RUNBOOK.md)를 참고하세요.
 
+처음 실행하는 사용자는 [초보자용 빠른 실행 안내서](docs/QUICK_START_DAY5.md)를 먼저 따르세요. 이 안내서는 로컬 서버를 켜고 PC·Windows 상태를 확인하는 최소 절차를 설명합니다. 계정 연결, SDP, AI, XDR 원격 연결의 실제 성공 여부는 화면의 별도 상태와 제공된 연결 절차로 확인해야 합니다.
+
 최종 재현 기록과 인수인계 계획은 [STUDENT_RELEASE_RECORD.md](docs/STUDENT_RELEASE_RECORD.md)를 참고하세요.
