@@ -21,14 +21,16 @@ const scripts=Object.freeze({
 async function query(kind,signal){
   if(process.platform!=='win32')throw Error('WINDOWS_UNAVAILABLE');
   if(aborted(signal))throw cancel();
-  const {stdout}=await execFileAsync(psPath(),['-NoProfile','-NonInteractive','-Command',utf8Output+scripts[kind]],{windowsHide:true,timeout:5000,maxBuffer:32768,signal});
+  const timeout=kind==='network'?8000:5000;
+  const {stdout}=await execFileAsync(psPath(),['-NoProfile','-NonInteractive','-Command',utf8Output+scripts[kind]],{windowsHide:true,timeout,maxBuffer:32768,signal});
   if(aborted(signal))throw cancel();
   return JSON.parse(String(stdout));
 }
 const err=(code,message)=>({status:'error',error:{code,message}});
+const timedOut=error=>error?.code==='ETIMEDOUT'||(error?.killed===true&&error?.signal==='SIGTERM');
 async function part(kind,signal,validate,source,scope){
   try{const data=await query(kind,signal);if(!validate(data))throw Error('invalid');return {status:'ok',data,source,scope,measuredAt:now()};}
-  catch(error){if(error?.code==='REQUEST_CANCELLED'||aborted(signal))throw error;return err(error?.code==='ETIMEDOUT'?'WINDOWS_QUERY_TIMEOUT':'WINDOWS_QUERY_UNAVAILABLE',`${kind} 조회 결과를 확인할 수 없습니다.`);}
+  catch(error){if(error?.code==='REQUEST_CANCELLED')throw error;if(aborted(signal))throw cancel();return err(timedOut(error)?'WINDOWS_QUERY_TIMEOUT':'WINDOWS_QUERY_UNAVAILABLE',`${kind} 조회 결과를 확인할 수 없습니다.`);}
 }
 const text=value=>typeof value==='string'&&value.length>0&&value.length<=200;
 const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=1000000;

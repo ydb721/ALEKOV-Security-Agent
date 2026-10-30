@@ -776,6 +776,7 @@ function renderPcStatus() {
   const button = $('pc-status-load');
   const resource = state.pcStatus;
   button.disabled = resource.status === 'loading';
+  target.setAttribute('aria-busy', String(resource.status === 'loading'));
   if (resource.status === 'idle') return setChildren(target, stateBox('empty', '조회 전입니다. 현재 PC 상태는 아직 측정하지 않았습니다.'));
   if (resource.status === 'loading') return setChildren(target, stateBox('loading', '내 PC 상태를 측정 중입니다.'));
   if (resource.status === 'error') return setChildren(target, stateBox('error', `확인 불가 · ${resource.error.code}: ${resource.error.message}`));
@@ -796,16 +797,30 @@ function clearPcStatus() {
   renderPcStatus();
 }
 
+function windowsRecovery(title) {
+  if (title.includes('로그')) return 'Windows 이벤트 로그를 읽지 못했습니다. 현재 계정에 로그 조회 권한이 없을 수 있습니다. 설정을 변경하지 말고 접근 가능 여부를 확인한 뒤 다시 조회해 주세요.';
+  return `${title} 정보를 읽지 못했습니다. 원인을 확인할 수 없으면 설정을 변경하지 말고 잠시 후 다시 조회해 주세요.`;
+}
+
 function securityLine(title, resource, describe) {
-  if (resource.status === 'error') return el('section', { className: 'windows-security-block', 'data-state': 'error' }, [el('h3', { text: title }), el('p', { text: `확인 불가 · ${resource.error.code}: ${resource.error.message}` })]);
+  if (resource.status === 'error') return el('section', { className: 'windows-security-block', 'data-state': 'error' }, [
+    el('h3', { text: title }),
+    el('p', { text: `확인 불가 · ${resource.error.code}: ${resource.error.message}` }),
+    el('p', { className: 'muted', text: windowsRecovery(title) }),
+  ]);
   return el('section', { className: 'windows-security-block' }, [el('h3', { text: title }), ...describe(resource)]);
 }
 function renderWindowsSecurity() {
   const target=$('windows-security-result'), button=$('windows-security-load'), resource=state.windowsSecurity;
   button.disabled=resource.status==='loading';
+  target.setAttribute('aria-busy', String(resource.status === 'loading'));
   if(resource.status==='idle')return setChildren(target,stateBox('empty','조회 전입니다. Windows 설정과 이벤트 로그는 아직 읽지 않았습니다.'));
   if(resource.status==='loading')return setChildren(target,stateBox('loading','Windows 네트워크·방화벽·이벤트 로그를 읽는 중입니다.'));
-  if(resource.status==='error')return setChildren(target,stateBox('error',`확인 불가 · ${resource.error.code}: ${resource.error.message}`));
+  if(resource.status==='error')return setChildren(target,
+    stateBox('error',`확인 불가 · ${resource.error.code}: ${resource.error.message}`),
+    el('p',{className:'muted',text:'Windows 보안 상태를 읽지 못했습니다. 설정을 변경하지 말고 잠시 후 다시 조회해 주세요.'}),
+    el('button',{type:'button',className:'btn',text:'Windows 상태 다시 조회',onclick:()=>loadWindowsSecurity()}),
+  );
   const d=resource.data, demo=d.mode==='demo';
   const source=row=>[el('p',{className:'muted',text:`출처: ${row.source} · 범위: ${row.scope} · 조회 시각: ${formatTime(row.measuredAt)}`})];
   const blocks=[
@@ -814,10 +829,19 @@ function renderWindowsSecurity() {
     ...['system','application'].map(key=>securityLine(`Windows ${key==='system'?'System':'Application'} 로그`,d.events[key],row=>row.status==='error'?[]:[el('p',{text:`Error(Level 2) ${row.data.errors}건 · Warning(Level 3) ${row.data.warnings}건`}),...source(row)])),
     el('section',{className:'windows-security-block'},[el('h3',{text:'SDP 서버 상태'}),el('p',{text:d.sdp.status==='demo'?'예제 데이터 · 실제 SDP 연결 확인 아님':d.sdp.status==='disconnected'?'SDP 미연결 · 설정되지 않음':'확인 불가 · 어댑터 설정만으로 실제 원격 SDP 응답을 증명할 수 없습니다.'})]),
   ];
-  setChildren(target,demo?stateBox('empty','예제 데이터(demo)입니다. 실제 Windows 또는 SDP 조회 결과가 아닙니다.'):el('p',{className:'muted',text:'실제 Windows 읽기 전용 조회 결과입니다. 네트워크 구성은 인터넷 접근 성공을 뜻하지 않습니다.'}),...blocks);
+  const hasFailure=[d.network,d.firewall,d.events.system,d.events.application].some(item=>item.status==='error');
+  setChildren(target,demo?stateBox('empty','예제 데이터(demo)입니다. 실제 Windows 또는 SDP 조회 결과가 아닙니다.'):el('p',{className:'muted',text:'실제 Windows 읽기 전용 조회 결과입니다. 네트워크 구성은 인터넷 접근 성공을 뜻하지 않습니다.'}),...blocks,hasFailure?el('button',{type:'button',className:'btn',text:'Windows 상태 다시 조회',onclick:()=>loadWindowsSecurity()}):null);
 }
 function validWindowsSecurity(d){return isRecord(d)&&d.schema==='alekov.pc.security.v1'&&['local','demo'].includes(d.mode)&&isRecord(d.network)&&isRecord(d.firewall)&&isRecord(d.events)&&isRecord(d.events.system)&&isRecord(d.events.application)&&isRecord(d.sdp);}
 async function loadWindowsSecurity(){const gen=++windowsSecurityGeneration;if(windowsSecurityController)windowsSecurityController.abort();const controller=new AbortController();windowsSecurityController=controller;state.windowsSecurity={status:'loading'};renderWindowsSecurity();try{const result=await request('/api/pc/security-status',{signal:controller.signal,timeoutMs:10000});if(gen!==windowsSecurityGeneration)return;state.windowsSecurity=result.ok&&validWindowsSecurity(result.data)?{status:'ok',data:result.data}:{status:'error',error:result.ok?{code:'WINDOWS_SECURITY_UNVERIFIED',message:'Windows 보안 상태 응답을 확인할 수 없습니다.'}:result.error};}catch{if(gen===windowsSecurityGeneration)state.windowsSecurity={status:'error',error:{code:'WINDOWS_SECURITY_REQUEST_FAILED',message:'Windows 보안 상태를 요청하지 못했습니다.'}};}finally{if(gen===windowsSecurityGeneration){windowsSecurityController=null;renderWindowsSecurity();}}}
+
+function clearWindowsSecurity() {
+  if (windowsSecurityController) windowsSecurityController.abort();
+  windowsSecurityController = null;
+  ++windowsSecurityGeneration;
+  state.windowsSecurity = { status: 'idle' };
+  renderWindowsSecurity();
+}
 
 async function loadPcStatus() {
   const requestGeneration = ++pcStatusGeneration;
@@ -1454,6 +1478,7 @@ async function loadAll() {
   cancelInteractive();
   clearVulnerabilities();
   clearPcStatus();
+  clearWindowsSecurity();
 
   const refresh = $('refresh');
   refresh.disabled = true;
@@ -1484,6 +1509,7 @@ function init() {
   $('diag-copy').addEventListener('click', () => copyDiagnostics());
   $('pc-status-load').addEventListener('click', () => loadPcStatus());
   $('windows-security-load').addEventListener('click', () => loadWindowsSecurity());
+  $('open-records-shortcut').addEventListener('click', () => selectView('records', { focus: true }));
   $('vulnerabilities-load').addEventListener('click', () => loadVulnerabilities());
   $('vulnerabilities-cancel').addEventListener('click', () => cancelVulnerabilities());
   $('ai-check').addEventListener('click', () => checkAiConnection());

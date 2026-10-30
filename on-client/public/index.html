@@ -45,6 +45,28 @@
 
       <section id="view-protection" class="view" role="tabpanel" aria-labelledby="tab-protection">
         <h1>보호 현황</h1>
+        <section class="priority-overview" aria-labelledby="priority-overview-title">
+          <h2 id="priority-overview-title">먼저 확인할 보안 상태</h2>
+          <div class="priority-grid">
+            <section class="card provided" aria-labelledby="pc-status-title">
+              <h2 id="pc-status-title">내 PC 상태 <span class="tag">로컬 측정</span></h2>
+              <p class="muted">이 영역은 학생 구현과 별개입니다. 다시 조회를 누르면 이 PC의 CPU 구간 사용률, 메모리 사용량, Windows 시스템 드라이브 여유 공간을 읽습니다. demo에서는 예제 데이터이며 실제 PC 측정값이 아닙니다.</p>
+              <div class="row"><button type="button" id="pc-status-load" class="btn">다시 조회</button></div>
+              <div id="pc-status-result" class="pc-status-result" aria-live="polite" aria-busy="false"></div>
+            </section>
+            <section class="card provided" aria-labelledby="windows-security-title">
+              <h2 id="windows-security-title">Windows 보안 상태 <span class="tag">로컬 읽기 전용</span></h2>
+              <p class="muted">Windows 경고·오류 건수는 운영체제 이벤트 기록의 집계 결과이며, 침해나 공격 탐지 결과를 의미하지 않습니다.</p>
+              <div class="row"><button type="button" id="windows-security-load" class="btn">Windows 상태 조회</button></div>
+              <div id="windows-security-result" class="pc-status-result" aria-live="polite" aria-busy="false"></div>
+            </section>
+            <section class="card provided priority-records" aria-labelledby="priority-records-title">
+              <h2 id="priority-records-title">보안 기록 및 알림</h2>
+              <p class="muted">접속 기록과 XDR 사건은 보안 기록 메뉴에서 확인합니다. Windows 이벤트 집계와는 별도의 자료입니다.</p>
+              <div class="row"><button type="button" id="open-records-shortcut" class="btn">보안 기록으로 이동</button></div>
+            </section>
+          </div>
+        </section>
 
         <div class="grid-2">
           <section class="card provided" aria-labelledby="identity-title">
@@ -78,18 +100,6 @@
           <div id="student-status" class="student-slot" aria-live="polite"></div>
         </section>
 
-        <section class="card provided" aria-labelledby="pc-status-title">
-          <h2 id="pc-status-title">내 PC 상태 <span class="tag">로컬 측정</span></h2>
-          <p class="muted">이 영역은 학생 구현과 별개입니다. 다시 조회를 누르면 이 PC의 CPU 구간 사용률, 메모리 사용 가능량 기준 사용량, Windows 시스템 드라이브 여유 공간을 읽습니다. demo에서는 예제 데이터이며 실제 PC 측정값이 아닙니다.</p>
-          <div class="row"><button type="button" id="pc-status-load" class="btn">다시 조회</button></div>
-          <div id="pc-status-result" class="pc-status-result" aria-live="polite"></div>
-        </section>
-        <section class="card provided" aria-labelledby="windows-security-title">
-          <h2 id="windows-security-title">Windows 보안 상태 <span class="tag">로컬 읽기 전용</span></h2>
-          <p class="muted">Windows 경고·오류 건수는 운영체제 이벤트 기록의 집계 결과이며, 침해나 공격 탐지 결과를 의미하지 않습니다.</p>
-          <div class="row"><button type="button" id="windows-security-load" class="btn">Windows 상태 조회</button></div>
-          <div id="windows-security-result" class="pc-status-result" aria-live="polite"></div>
-        </section>
 
         <section class="card provided" aria-labelledby="diag-title">
           <h2 id="diag-title">도움정보 <span class="tag">제공</span></h2>
